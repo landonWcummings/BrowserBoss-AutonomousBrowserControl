@@ -1,0 +1,42 @@
+<script src="popup.js"></script>
+
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            width: 300px; /* Fixed width */
+            height: 400px; /* Fixed height */
+            overflow: hidden; /* Prevent scrollbars */
+            text-align: center;
+        }
+        textarea, button, pre {
+            width: 90%;
+            margin-top: 10px;
+        }
+        textarea {
+            height: 60px;
+        }
+        button {
+            padding: 10px;
+            font-size: 16px;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            text-align: left;
+            height: 200px; /* Adjust height to fit your layout */
+            overflow: auto; /* Enable scrolling for long content */
+        }
+    </style>
+</head>
+<body>
+    <h2>What should I do?</h2>
+    <textarea id="prompt" placeholder="Type your response here..."></textarea>
+    <button id="run">Send</button>
+    <pre id="output"></pre>
+</body>
+</html>
