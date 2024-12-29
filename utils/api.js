@@ -42,6 +42,8 @@ export async function queryXAI(prompt, model = 'grok-2', temperature = 0.7) {
     // Return the entire data object or just data.choices[0].message, etc.
     return data;
   } catch (error) {
+    console.log('Prompt before error: ', prompt)
+    console.log('Data recieved: ', response)
     console.error('Error querying x.ai API:', error.message);
     throw error;
   }

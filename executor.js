@@ -1,6 +1,5 @@
 const cleanText = (text) => {
-    if (!text) return "N/A";
-
+    if (!text) return null;
     let removedContent = []; // To store removed or truncated content
 
     // Replace script blocks with truncation symbol and log the removed content
@@ -74,47 +73,35 @@ const cleanText = (text) => {
         console.log("Removed/Truncated Content:", removedContent);
     }
 
-    // Return cleaned text or "N/A" if too short or empty
-    return text.length > 2 ? text : "N/A";
+    return text.length > 2 ? text : null;
 };
-
 const filterElements = (elements) => {
     const uniqueContent = new Set();
     const uniqueElements = new Set();
     const staticContent = [];
-  
+
     const filtered = elements
-      .map((el, index) => {
-        // Instead of getAttribute('role'), do:
-        const role = el.role || null;
-        const placeholder = el.placeholder || null; 
-        // ... the rest remains the same ...
-  
-        const hasClickListener = false; // or remove these if not relevant
-        const hasKeydownListener = false;
-        const hasChangeListener = false;
-  
-        const eventListeners = []; // since these are plain objects, not DOM
-        // or skip event listener detection entirely, 
-        // unless your content script is already sending that info
-  
-        const processedElement = { 
-          originalIndex: index, 
-          tag: el.tag, 
-          text: cleanText(el.text), 
-          href: el.href || null,
-          type: el.type || null,
-          role,
-          placeholder,
-          eventListeners: eventListeners.length > 0 ? eventListeners : null
-        };
-  
-        // Filter out null properties
-        return Object.fromEntries(
-          Object.entries(processedElement).filter(([_, value]) => value !== null)
-        );
-      })
+        .map((el, index) => {
+            // Process each element
+            const processedElement = {
+                originalIndex: index,
+                tag: el.tag || null,
+                text: cleanText(el.text),
+                href: el.href || null,
+                type: el.type || null,
+                role: el.role || null,
+                placeholder: el.placeholder || null,
+            };
+
+            // Filter out null or empty properties
+            return Object.fromEntries(
+                Object.entries(processedElement).filter(([_, value]) => value !== null)
+            );
+        })
         .filter((el) => {
+            // Skip elements with null text
+            if (!el.text) return false;
+        
             // Create a unique key based on element properties
             const uniqueKey = JSON.stringify({
                 tag: el.tag,
@@ -123,26 +110,17 @@ const filterElements = (elements) => {
                 type: el.type,
                 role: el.role,
                 placeholder: el.placeholder,
-                eventListeners: el.eventListeners
             });
-
+        
             // Check if the element is unique
             if (uniqueElements.has(uniqueKey)) {
                 return false; // Duplicate element, filter it out
             }
             uniqueElements.add(uniqueKey);
-
-            // Keep interactive elements regardless of text content
-            const isInteractive = ["INPUT", "A", "DIV", "TEXTAREA", "BUTTON", "SELECT"].includes(el.tag);
-
-            // Aggregate non-interactive text elements
-            if (!isInteractive && el.text !== "N/A" && el.text) {
-                staticContent.push(el.text);
-                return false;
-            }
-
-            // Filter out duplicates and invalid elements
-            return isInteractive || (el.text && el.text !== "N/A" && !uniqueContent.has(el.text) && uniqueContent.add(el.text));
+        
+            return true;
+        
+        
         })
         .map((el, newIndex) => ({ ...el, index: newIndex + 1 })); // Assign new indices for LLM
 
@@ -151,13 +129,12 @@ const filterElements = (elements) => {
         filtered.push({
             tag: "STATIC_CONTENT",
             text: staticContent.join(" "),
-            index: filtered.length + 1
+            index: filtered.length + 1,
         });
     }
 
     return filtered;
 };
-
 
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -176,14 +153,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const LLMprompt = `
             Your task today is '${message.task}'. Currently, you are at '${url}'.
             The plan is: ${plan}
+            ${message.pastInstructions && message.pastInstructions.length > 0 ? `Past actions - ${message.pastInstructions.join(", ")}` : ""}
             Here are the key page elements on the screen right now:
             ${JSON.stringify(filteredElements.map(({ index, tag, text, href }) => ({ index, tag, text, href })), null, 2)}
             Respond with a single number between 1 and ${filteredElements.length} to interact with that element.
             Or respond with a number-text to enter text into an element, e.g., 3-"login info".
             Provide a single sentence at the end justifying why you did what you did.
             Respond with -1 if '${message.task}' is unclear or not feasible, and justify.
-            Respond with -5 if task is complete. Respond with 0-"URL" to navigate to a new url.
-        `;
+            Respond with -5 if task is complete. Respond with 0-"URL" to navigate to a new url. Add a <DONE> at the end of your message if you will have completed the task after this action.
+        `.trim();
+
 
         sendResponse({
             LLMprompt: LLMprompt.trim(),
@@ -201,7 +180,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // Build the LLM prompt
         const LLMplanprompt = `
             You are currently at '${url}'. Make a very concise numbered list of steps that should be taken in order to accomplish '${task}'.
-            You are allowed to input text, click on page elements, and navigate to new URLS. This is done through a interace for you so respond with click-"some on page element", navigate to-"URL", or input text"some page element and text to input."
+            You are allowed to input text, click on page elements, and navigate to new URLS. This is done through a interace for you so respond with click-"some on page element", navigate to-"URL", or input text"some page element and text to input. Keep it open-ended as you likely don't know what to do at a page"
             If the task -'${task}' is not clear, unfeasable, or not a task that can be accomplished respond with -1_"<sentance why it is unfeasable>" otherwise respond with a numbered of clear steps to take in order to complete the task.
         `;
 
