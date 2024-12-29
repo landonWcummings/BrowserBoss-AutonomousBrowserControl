@@ -3,27 +3,34 @@
     "name": "LLM Browser Agent",
     "version": "1.0",
     "description": "Control the browser using an LLM.",
-    "permissions": ["scripting", "activeTab", "tabs", "storage"],
+    "permissions": [
+      "scripting",
+      "activeTab",
+      "tabs",
+      "storage"
+    ],
     "background": {
-      "service_worker": "background.js"
+      "service_worker": "background.js",
+      "type": "module"
     },
-    "host_permissions": ["<all_urls>"],
+    "host_permissions": [
+      "<all_urls>"
+    ],
     "action": {
       "default_popup": "popup.html",
       "default_icon": "browser boss.png"
     },
     "content_scripts": [
-        {
+      {
         "matches": ["https://*/*", "http://*/*"],
         "js": ["content.js"]
-        }
+      }
     ],
-    "web_accessible_resources" : [
-    {
-        "resources": ["executor.js"],
+    "web_accessible_resources": [
+      {
+        "resources": ["executor.js", "utils/api.js"],
         "matches": ["<all_urls>"]
-    }
-]
-
+      }
+    ]
   }
   
