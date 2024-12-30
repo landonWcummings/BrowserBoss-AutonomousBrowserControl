@@ -6,12 +6,9 @@ chrome.runtime.onMessage.addListener((task, sender, sendResponse) => {
   // We only care about messages of type "LLMQuery"
   if (task.type === "LLMQuery") {
     (async () => {
-      let test = false;
-      let plantest = true
+      let test = true;
       let pageinformation = null;
       let selectedTab = null;
-      let planprompt = null;
-      let plan = null;
       let execResponse = null;
       let finishing = false;
 
@@ -35,38 +32,13 @@ chrome.runtime.onMessage.addListener((task, sender, sendResponse) => {
         // 3) Retrieve visible elements and prepare the environment
         const [currentPageData, prepareResponse] = await Promise.all([
           sendMessageToTab(selectedTab.id, { type: "getVisibleElements" }),
-          sendMessageToTab(selectedTab.id, {
-            type: "prepare",
-            url: selectedTab.url,
-            task: task.prompt,
-          }),
         ]);
 
         pageinformation = currentPageData;
-        planprompt = prepareResponse;
 
         console.log("Data from content.js:", pageinformation);
 
-        // ----- Only execute planning once -----
-        try {
-          if (plantest) {
-            plan = "go go go!";
-          } else {
-            console.log("planning prompt: ", planprompt.LLMplanprompt);
-            const LLMplanresponse = await queryXAI(planprompt.LLMplanprompt);
-            plan = LLMplanresponse.choices[0].message.content;
-          }
-          console.log("LLMplan content:", JSON.stringify(plan));
-
-          let keepgoing = parseplan(plan);
-          if (keepgoing !== "") {
-            sendResponse({ result: keepgoing });
-            return;
-          }
-        } catch (error) {
-          console.error("Error querying XAI plan:", error);
-        }
-
+        
         // ----- Repeat up to x times -----
         for (let i = 0; i < 3; i++) {
           console.log(`=== Iteration ${i + 1} ===`);
@@ -78,7 +50,6 @@ chrome.runtime.onMessage.addListener((task, sender, sendResponse) => {
             type: "executeTask",
             pagedata: pageinformation,
             task: task.prompt,
-            plan: plan,
             // Pass the instructions history each time
             pastInstructions: instructionsHistory,
           });
@@ -89,8 +60,8 @@ chrome.runtime.onMessage.addListener((task, sender, sendResponse) => {
           let LLMinstruction;
           try {
             if (test) {
-              LLMinstruction =
-                "6\n\nI clicked on the element with index 6 because it is an anchor tag with the text \"flappy-bird-plus-ai\" and its href attribute leads to the Flappy Bird page on the website.";
+                LLMinstruction = "22-\"input testing\"<DONE>\n\nI did this as a test of inputs"
+                //LLMinstruction ="6\n\nI clicked on the element with index 6 because it is an anchor tag with the text \"flappy-bird-plus-ai\" and its href attribute leads to the Flappy Bird page on the website.";
             } else {
               const LLMresponse = await queryXAI(execResponse.LLMprompt);
               LLMinstruction = LLMresponse.choices[0].message.content;
@@ -100,7 +71,7 @@ chrome.runtime.onMessage.addListener((task, sender, sendResponse) => {
             const instructionAfterNewline = LLMinstruction.split("\n").slice(1).join("\n").trim();
 
             // Push only the part after the newline
-            if (instructionsHistory.length === 0) {
+            if (instructionsHistory == []) {
                 instructionsHistory.push(instructionAfterNewline); // First entry
             } else {
                 instructionsHistory[0] += `\n${instructionAfterNewline}`; // Append with newline
@@ -161,8 +132,7 @@ chrome.runtime.onMessage.addListener((task, sender, sendResponse) => {
             return; // Stop execution here if there's an error
           }
 
-          // ----- Optional 0.4-second pause per iteration (if desired) -----
-          await pause(400);
+          await pause(1000);
           if (finishing){
             i = 1000
             sendResponse({ result: "Task accomplished!" });
@@ -261,12 +231,12 @@ function parseresponse(llmmessage, filteredElements) {
     done = true
     llmmessage = llmmessage.replace("<DONE>", "")
   }
+
   
   // Separate everything before and after the first newline
   const [beforeNewline, ...afterNewlineParts] = llmmessage.split("\n");
   const afterNewline = afterNewlineParts.join(" ").trim(); // Join and remove extra newlines
 
-  
 
   if (beforeNewline.includes("-")) {
     // Split the first part (before newline) by "-" to extract the number and input text
@@ -276,7 +246,6 @@ function parseresponse(llmmessage, filteredElements) {
     index = beforeNewline.trim(); // If no "-", the number is the entire first part
   }
 
-  
 
   // Check if the index is valid
   if (index > 0) {
@@ -292,6 +261,7 @@ function parseresponse(llmmessage, filteredElements) {
     }
   }
 
+
   console.log("action number:", index);
   console.log("inputtext:", inputtext);
   console.log("justification:", afterNewline);
@@ -300,12 +270,14 @@ function parseresponse(llmmessage, filteredElements) {
   // Construct the parsed response
   return {
     action: index || -1, // Default action if no number found
-    inputtext: inputtext.trim() || "",
+    inputtext: inputtext || "",
     justification: afterNewline.trim(),
     targetElement,
     done: done 
   };
 }
+
+
 async function goToURL(newUrl, id) {
     try {
       console.log("Attempting to navigate to:", newUrl);
@@ -334,7 +306,7 @@ async function goToURL(newUrl, id) {
       await waitForPageLoad(id);
   
       // Then add a small delay (0.7 second) before continuing
-      await pause(700);
+      await pause(1000);
   
       // Get the updated tab information
       const temptabinfo = await getcurrenturl();
@@ -374,16 +346,4 @@ function getcurrenturl() {
   });
 }
 
-function parseplan(plan) {
-  if (plan.length > 2) {
-    let firsttwo = plan.slice(0, 2);
-    if (firsttwo === "-1") {
-      let justification = plan.slice(3);
-      if (justification.slice(0, 1) === "\"") {
-        justification = justification.slice(1, justification.length - 1);
-      }
-      return `Error - ${justification}`;
-    }
-  }
-  return "";
-}
+

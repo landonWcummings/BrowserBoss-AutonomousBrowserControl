@@ -3,40 +3,66 @@ console.log("Content script loaded!");
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "getVisibleElements") {
         const currentUrl = window.location.href;
-
-        // Get visible elements
-        const elements = Array.from(document.querySelectorAll("*")).filter(el => {
+    
+        const elements = Array.from(document.querySelectorAll("*")).map(el => {
             const rect = el.getBoundingClientRect();
             const style = getComputedStyle(el);
-            return rect.width > 0 &&
-                   rect.height > 0 &&
-                   style.visibility !== "hidden" &&
-                   style.display !== "none";
-        }).map(el => ({
-            tag: el.tagName,
-            id: el.id || null,
-            class: el.className || null,
-            text: el.textContent.trim() || null,
-            href: el.href || null,
-            type: el.type || null
-        }))
-        .filter(el => {
-            // Exclude elements with no meaningful content
+            const isVisible =
+                rect.width > 0 &&
+                rect.height > 0 &&
+                style.visibility !== "hidden" &&
+                style.display !== "none";
+    
+            return {
+                tag: el.tagName,
+                id: el.id || null,
+                class: el.className || null,
+                text: el.textContent.trim() || null,
+                href: el.href || null,
+                type: el.type || null,
+                visible: isVisible,
+                ariaLabel: el.getAttribute("aria-label") || null,
+                ariaLabelledBy: el.getAttribute("aria-labelledby") || null,
+                role: el.getAttribute("role") || null,
+                placeholder: el.placeholder || null,
+                value: el.value || null,
+                name: el.name || null,
+                alt: el.alt || null,
+                title: el.title || null,
+                rect: {
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                },
+                isClickable: ["A", "BUTTON"].includes(el.tagName) || el.hasAttribute("onclick"),
+                isFocusable: el.tabIndex >= 0,
+                form: el.form?.id || null,
+            };
+        });
+    
+        const filtered = elements.filter(el => {
+            // Exclude if no ID, class, text, href, or type
             if (!el.id && !el.class && !el.text && !el.href && !el.type) {
                 return false;
             }
             // Exclude elements by tag name
             const excludedTags = ["svg", "circle", "path"];
-            return !excludedTags.includes(el.tag.toLowerCase());
+            if (excludedTags.includes(el.tag.toLowerCase())) {
+                return false;
+            }
+            return true;
         });
-
-        sendResponse({ url: currentUrl, elements });
-        return true; // Keep the channel open for async responses
+    
+        sendResponse({ url: currentUrl, elements: filtered });
+        return true;
     }
+    
 
     if (message.type === "executeClick") {
+
         const element = message.element;
-        const inputtext = message.inputtext;
+        const inputtext = message.inputtext.replace(/"/g, "");
     
         if (!element) {
             console.warn("No element provided in the message.");
@@ -71,6 +97,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (matchedElement) {
             if (inputtext && (matchedElement.tagName === "INPUT" || matchedElement.tagName === "TEXTAREA")) {
                 // Type the inputtext into the element
+                matchedElement.click();
                 matchedElement.value = inputtext;
     
                 // Dispatch an input event to simulate user typing

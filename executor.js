@@ -1,195 +1,265 @@
+const MAX_CHAR_LIMIT = 200000; // Character limit for the model input
+
 const cleanText = (text) => {
     if (!text) return null;
-    let removedContent = []; // To store removed or truncated content
+    let removedContent = [];
 
-    // Replace script blocks with truncation symbol and log the removed content
+    // Remove <script> blocks
     text = text.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, (match) => {
         removedContent.push(`SCRIPT BLOCK: ${match}`);
         return "⚠️";
     });
 
-    // Replace style blocks with truncation symbol and log the removed content
+    // Remove <style> blocks
     text = text.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, (match) => {
         removedContent.push(`STYLE BLOCK: ${match}`);
         return "⚠️";
     });
 
-    // Replace JS calls like `window.*` with truncation symbol and log
-    text = text.replace(/window\.\w+[^;]*;/g, (match) => {
-        removedContent.push(`JS CALL: ${match}`);
+    // Remove JS calls, inline CSS, and HTML tags
+    text = text.replace(/window\.\w+[^;]*;/g, (m) => {
+        removedContent.push(`JS CALL: ${m}`);
         return "⚠️";
     });
-
-    // Replace inline CSS (key:value;) with truncation symbol and log
-    text = text.replace(/[\w\-]+\s*:\s*[^;]+;/g, (match) => {
-        removedContent.push(`INLINE CSS: ${match}`);
+    text = text.replace(/[\w\-]+\s*:\s*[^;]+;/g, (m) => {
+        removedContent.push(`INLINE CSS: ${m}`);
         return "⚠️";
     });
-
-    // Remove HTML tags and log them
-    text = text.replace(/<\/?[^>]+(>|$)/g, (match) => {
-        removedContent.push(`HTML TAG: ${match}`);
+    text = text.replace(/<\/?[^>]+(>|$)/g, (m) => {
+        removedContent.push(`HTML TAG: ${m}`);
         return "";
     });
 
     // Normalize whitespace
-    text = text.replace(/[\s\n\t]+/g, " ").trim();
+    text = text.replace(/\s+/g, " ").trim();
 
-    // Detect the start of jargon/code and insert truncation symbol
+    // If we see “tech jargon,” truncate from that point forward
     const jargonPatterns = /function|self\.__|@keyframes|\.className|data:image|font-size|document\.|var\s+\w+|gtag|hljs|doctype|createElement|innerHTML|\[\[Prototype\]\]/i;
     if (jargonPatterns.test(text)) {
-        const match = text.match(jargonPatterns)[0];
-        removedContent.push(`JARGON DETECTED: ${match}`);
-        text = text.replace(jargonPatterns, "⚠️");
+        const index = text.search(jargonPatterns);
+        removedContent.push(`JARGON DETECTED -> truncated from index ${index}`);
+        text = text.slice(0, index).trim();
     }
 
-    // Remove repeated quotes or meaningless sequences
-    text = text.replace(/"{2,}/g, (match) => {
-        removedContent.push(`REPEATED QUOTES: ${match}`);
-        return "";
-    });
+    // Remove repeated quotes
+    text = text.replace(/"{2,}/g, '"');
 
-    // Replace meaningless patterns and log them
+    // Replace meaningless single words
     const meaninglessPatterns = /\b(undefined|null|NaN|true|false)\b/i;
-    if (meaninglessPatterns.test(text)) {
-        const match = text.match(meaninglessPatterns)[0];
-        removedContent.push(`MEANINGLESS PATTERN: ${match}`);
-        text = text.replace(meaninglessPatterns, "⚠️");
-    }
+    text = text.replace(meaninglessPatterns, "⚠️");
 
-    // Truncate overly long text or when truncation symbol is detected
+    // Cut out large repeated sequences
+    text = text.replace(
+        /(\b[\w’']+\b(?:\s+\b[\w’']+\b){2,})(?:\s+\1)+/gi,
+        (full, capture) => {
+            removedContent.push(`INTRA-ELEMENT REPETITION: ${full}`);
+            return capture;
+        }
+    );
+
+    // If we see "⚠️", we truncate from there
     const truncationIndex = text.indexOf("⚠️");
     if (truncationIndex !== -1) {
         removedContent.push(`TRUNCATED CONTENT: ${text.slice(truncationIndex)}`);
         text = text.slice(0, truncationIndex).trim();
     }
-    if (text.length > 1000) {
-        removedContent.push(`OVERLY LONG TEXT: ${text.slice(1000)}`);
-        text = `${text.slice(0, 1000)}...`;
+
+    // Hard limit to 1000 characters
+    const LIMIT = 1000;
+    if (text.length > LIMIT) {
+        removedContent.push(`OVERLY LONG TEXT -> truncated after ${LIMIT} chars.`);
+        text = text.slice(0, LIMIT) + "...";
     }
 
-    // Log removed content for debugging
+    // Debug log
     if (removedContent.length > 0) {
-        console.log("Removed/Truncated Content:", removedContent);
+        console.log("Removed/Truncated content:", removedContent);
     }
 
-    return text.length > 2 ? text : null;
+    return text.length > 1 ? text : null;
 };
-const filterElements = (elements) => {
-    const uniqueContent = new Set();
-    const uniqueElements = new Set();
-    const staticContent = [];
 
-    const filtered = elements
-        .map((el, index) => {
-            // Process each element
-            const processedElement = {
-                originalIndex: index,
-                tag: el.tag || null,
-                text: cleanText(el.text),
-                href: el.href || null,
-                type: el.type || null,
-                role: el.role || null,
-                placeholder: el.placeholder || null,
-            };
+const deduplicateInputs = (elements) => {
+    const seen = new Set();
+    return elements.filter((el) => {
+        if (el.tag !== "INPUT" && el.tag !== "TEXTAREA") return true; // Keep non-input elements untouched
 
-            // Filter out null or empty properties
-            return Object.fromEntries(
-                Object.entries(processedElement).filter(([_, value]) => value !== null)
-            );
-        })
-        .filter((el) => {
-            // Skip elements with null text
-            if (!el.text) return false;
-        
-            // Create a unique key based on element properties
-            const uniqueKey = JSON.stringify({
-                tag: el.tag,
-                text: el.text,
-                href: el.href,
-                type: el.type,
-                role: el.role,
-                placeholder: el.placeholder,
-            });
-        
-            // Check if the element is unique
-            if (uniqueElements.has(uniqueKey)) {
-                return false; // Duplicate element, filter it out
-            }
-            uniqueElements.add(uniqueKey);
-        
-            return true;
-        
-        
-        })
-        .map((el, newIndex) => ({ ...el, index: newIndex + 1 })); // Assign new indices for LLM
-
-    // Add a final element for aggregated static content
-    if (staticContent.length > 0) {
-        filtered.push({
-            tag: "STATIC_CONTENT",
-            text: staticContent.join(" "),
-            index: filtered.length + 1,
+        const uniqueKey = JSON.stringify({
+            tag: el.tag,
+            text: el.text,
+            href: el.href || null,
+            attributes: el.attributes || null, // Add other relevant properties if needed
         });
-    }
 
-    return filtered;
+        if (seen.has(uniqueKey)) {
+            return false; // Skip duplicates
+        }
+
+        seen.add(uniqueKey);
+        return true; // Keep unique elements
+    });
 };
 
+const filterElements = (elements) => {
+    const uniqueElements = new Set();
+    const filtered = [];
+
+    const skipTags = new Set(["TABLE", "TBODY", "TR", "TD"]);
+
+    elements.forEach((el, index) => {
+        if (skipTags.has(el.tag)) {
+            return; // Skip these tags
+        }
+
+        const isTextInput = el.tag === "INPUT" || el.tag === "TEXTAREA";
+
+        // Clean text
+        const cleaned = cleanText(el.text || "");
+        if (!cleaned && !isTextInput) return; // Exclude non-input elements with no text
+
+        const shortOrJunk = !isTextInput && cleaned.length < 1;
+
+        if (shortOrJunk) {
+            return; 
+        }
+
+        const elementKey = JSON.stringify({
+            tag: el.tag,
+            text: cleaned,
+            href: el.href && el.href.length ? el.href : "",
+        });
+
+        if (uniqueElements.has(elementKey)) {
+            return; // Skip duplicates
+        }
+        uniqueElements.add(elementKey);
+
+        const item = {
+            originalIndex: index + 1,
+            tag: el.tag,
+            text: cleaned,
+            href: el.href && el.href.length ? el.href : null,
+            id: el.id || null,
+            class: el.class || null,
+            type: el.type || null,
+            visible: el.visible || null,
+            ariaLabel: el.ariaLabel || null,
+            ariaLabelledBy: el.ariaLabelledBy || null,
+            role: el.role || null,
+            placeholder: el.placeholder || null,
+            name: el.name || null,
+            alt: el.alt || null,
+            title: el.title || null,
+            rect: el.rect || null,
+            isClickable: el.isClickable || null,
+            isFocusable: el.isFocusable || null,
+            form: el.form || null,
+        };
+
+        filtered.push(item);
+    });
+
+    // Deduplicate INPUT and TEXTAREA elements
+    const deduplicated = deduplicateInputs(filtered);
+
+    // Reassign sequential indices
+    return deduplicated.map((el, i) => ({ ...el, index: i + 1 }));
+};
+
+
+
+
+
+const truncateElements = (elements, charLimit) => {
+    let currentCharCount = 0;
+    const truncatedElements = [];
+
+    for (const element of elements) {
+        const elementString = JSON.stringify(element);
+        const elementLength = elementString.length;
+
+        if (currentCharCount + elementLength > charLimit) {
+            break;
+        }
+
+        truncatedElements.push(element);
+        currentCharCount += elementLength;
+    }
+
+    console.log(`Truncated to ${truncatedElements.length} elements to stay under ${charLimit} characters.`);
+    return truncatedElements;
+};
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log("Message received in executor.js:", message);
-
     if (message.type === "executeTask") {
         const { url, elements } = message.pagedata;
-        const plan = message.plan
+        console.log("received elements: ", elements)
 
-        // Clean and filter elements
         const filteredElements = filterElements(elements);
+        
 
-        console.log("executor.js filtered elements:", filteredElements);
+        const truncatedElements = truncateElements(filteredElements, MAX_CHAR_LIMIT);
 
-        // Build the LLM prompt
+        console.log("truncated elements: ", filteredElements)
         const LLMprompt = `
             Your task today is '${message.task}'. Currently, you are at '${url}'.
-            The plan is: ${plan}
-            ${message.pastInstructions && message.pastInstructions.length > 0 ? `Past actions - ${message.pastInstructions.join(", ")}` : ""}
+            ${
+                message.pastInstructions?.length
+                    ? "Past actions - " + message.pastInstructions.join(", ")
+                    : ""
+            }
             Here are the key page elements on the screen right now:
-            ${JSON.stringify(filteredElements.map(({ index, tag, text, href }) => ({ index, tag, text, href })), null, 2)}
-            Respond with a single number between 1 and ${filteredElements.length} to interact with that element.
+            ${JSON.stringify(
+                truncatedElements.map((element) => {
+                    // Only include these specific keys if they are non-null
+                    const allowedKeys = [
+                        "index",
+                        "tag",
+                        "text",
+                        "href",
+                        "rect",
+                        "isClickable",
+                        "ariaLabel",
+                        "ariaLabelledBy",
+                        "placeholder",
+                        "value"
+                    ];
+            
+                    const obj = {};
+                    for (const key of allowedKeys) {
+                        if (element[key] !== null && element[key] !== undefined) {
+                            // If the key is `rect`, round its values
+                            if (key === "rect" && typeof element[key] === "object") {
+                                obj[key] = {};
+                                for (const [rectKey, rectValue] of Object.entries(element[key])) {
+                                    obj[key][rectKey] = Math.round(rectValue); // Round the rect values
+                                }
+                            } else {
+                                obj[key] = element[key];
+                            }
+                        }
+                    }
+                    return obj;
+                }),
+                null,
+                2
+            )}
+            Respond with a single number between 1 and ${truncatedElements.length} to interact with that element.
             Or respond with a number-text to enter text into an element, e.g., 3-"login info".
             Provide a single sentence at the end justifying why you did what you did.
             Respond with -1 if '${message.task}' is unclear or not feasible, and justify.
-            Respond with -5 if task is complete. Respond with 0-"URL" to navigate to a new url. Add a <DONE> at the end of your message if you will have completed the task after this action.
+            Respond with -5 if task is complete.
+            Respond with 0-"URL" to navigate to a new url. 
+            Add a <DONE> at the end of your message if you will have completed the task after this action.
         `.trim();
 
 
         sendResponse({
-            LLMprompt: LLMprompt.trim(),
+            LLMprompt,
             title: "You are an LLM autonomously controlling a browser.",
-            filteredElements: filteredElements
+            filteredElements:truncatedElements,
         });
 
-        return true; // Indicate asynchronous response
+        return true;
     }
-
-    if (message.type === "prepare") {
-        const  url  = message.url;
-        const task = message.task
-
-        // Build the LLM prompt
-        const LLMplanprompt = `
-            You are currently at '${url}'. Make a very concise numbered list of steps that should be taken in order to accomplish '${task}'.
-            You are allowed to input text, click on page elements, and navigate to new URLS. This is done through a interace for you so respond with click-"some on page element", navigate to-"URL", or input text"some page element and text to input. Keep it open-ended as you likely don't know what to do at a page"
-            If the task -'${task}' is not clear, unfeasable, or not a task that can be accomplished respond with -1_"<sentance why it is unfeasable>" otherwise respond with a numbered of clear steps to take in order to complete the task.
-        `;
-
-        //console.log("LLM plan prompt: ", LLMplanprompt)
-        sendResponse({
-            LLMplanprompt: LLMplanprompt.trim()
-        });
-
-        return true; // Indicate asynchronous response
-    }
-    return false;
 });
