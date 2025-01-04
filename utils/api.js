@@ -6,8 +6,8 @@ export async function queryNova(input) {
         const client = new BedrockRuntimeClient({
             region: "us-east-1",
             credentials: {
-                accessKeyId: "AKIA2CUNLRML6XRE7OV5",
-                secretAccessKey: "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",
+                accessKeyId: "",
+                secretAccessKey: "",
             },
         });
 
