@@ -13,38 +13,46 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 style.visibility !== "hidden" &&
                 style.display !== "none";
     
-            return {
-                tag: el.tagName,
-                id: el.id || null,
-                class: el.className || null,
-                text: el.textContent.trim() || null,
-                href: el.href || null,
-                type: el.type || null,
-                visible: isVisible,
-                ariaLabel: el.getAttribute("aria-label") || null,
-                ariaLabelledBy: el.getAttribute("aria-labelledby") || null,
-                role: el.getAttribute("role") || null,
-                placeholder: el.placeholder || null,
-                value: el.value || null,
-                name: el.name || null,
-                alt: el.alt || null,
-                title: el.title || null,
-                rect: {
-                    x: rect.x,
-                    y: rect.y,
-                    width: rect.width,
-                    height: rect.height,
-                },
-                isClickable: ["A", "BUTTON"].includes(el.tagName) || el.hasAttribute("onclick"),
-                isFocusable: el.tabIndex >= 0,
-                form: el.form?.id || null,
-            };
+                return {
+                    tag: el.tagName,
+                    id: el.id || null,
+                    class: el.className || null,
+                    text: el.textContent.trim() || null,
+                    href: el.href || null,
+                    type: el.type || null,
+                    visible: isVisible,
+                    ariaLabel: el.getAttribute("aria-label") || null,
+                    ariaLabelledBy: el.getAttribute("aria-labelledby") || null,
+                    role: el.getAttribute("role") || null,
+                    placeholder: el.placeholder || null,
+                    value: el.value || null,
+                    name: el.name || null,
+                    alt: el.alt || null,
+                    title: el.title || null,
+                    rect: {
+                        x: rect.x,
+                        y: rect.y,
+                        width: rect.width,
+                        height: rect.height,
+                    },
+                    isClickable: ["A", "BUTTON"].includes(el.tagName) || el.hasAttribute("onclick"),
+                    isFocusable: el.tabIndex >= 0,
+                    form: el.form?.id || null,
+                    hasExecutioner: el.hasAttribute("data-executioner") // Check for data-executioner attribute
+                };
+    
         });
     
         const filtered = elements.filter(el => {
             // Exclude if no ID, class, text, href, or type
             if (!el.id && !el.class && !el.text && !el.href && !el.type) {
                 return false;
+            }
+
+            if (el.text){
+                if (el.text.includes("execute")){
+                    return false
+                }
             }
             // Exclude elements by tag name
             const excludedTags = ["svg", "circle", "path"];
@@ -97,7 +105,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (matchedElement) {
             if (inputtext && (matchedElement.tagName === "INPUT" || matchedElement.tagName === "TEXTAREA")) {
                 // Type the inputtext into the element
-                matchedElement.click();
                 matchedElement.value = inputtext;
     
                 // Dispatch an input event to simulate user typing

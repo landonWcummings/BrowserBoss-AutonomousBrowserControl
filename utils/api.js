@@ -1,50 +1,46 @@
-const API_KEY = 'xai-878bgCDzB9QPqT81n407wMaLIxWZsOzshUn9v6ZR5oTw2mAtAh5OU6Itrx2HuKDV88JCKEZCQg1LxmmR';
+import { BedrockRuntimeClient, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
 
-// utils/api.js
-// This file no longer adds a chrome.runtime.onMessage listener; 
-// it just exports the queryXAI function.
+export async function queryNova(input) {
+    try {
+        // Initialize the Bedrock Runtime client
+        const client = new BedrockRuntimeClient({
+            region: "us-east-1",
+            credentials: {
+                accessKeyId: "AKIA2CUNLRML6XRE7OV5",
+                secretAccessKey: "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",
+            },
+        });
 
-const API_URL = 'https://api.x.ai/v1/chat/completions';
+        // Construct the messages payload for the Nova API
+        const messages = [
+            {
+                role: 'user',
+                content: [{ text: input }],
+            },
+        ];
 
-// Export an async function to call x.ai
-export async function queryXAI(prompt, model = 'grok-2', temperature = 0.7) {
-  const payload = {
-    model,
-    messages: [
-      {
-        role: 'system',
-        content: 'You are Grok, a chatbot dedicated to serving the user in the most precise, technical, and concise manner.'
-      },
-      {
-        role: 'user',
-        content: prompt
-      }
-    ],
-    temperature
-  };
 
-  try {
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${API_KEY}`
-      },
-      body: JSON.stringify(payload)
-    });
+        // Create the ConverseCommand for the Nova API
+        const command = new ConverseCommand({
+            modelId: 'amazon.nova-lite-v1:0',
+            messages,
+        });
 
-    if (!response.ok) {
-      const errorDetails = await response.json();
-      throw new Error(`Failed to fetch AI response: ${response.status} - ${errorDetails.message}`);
+        const response = await client.send(command);
+
+        // Extract the relevant content from the response
+        let final = JSON.stringify(response?.output?.message?.content?.[0]?.text);
+
+        console.log("Nova: ", final)
+
+        if (final.startsWith('"') && final.endsWith('"')) {
+            final = final.slice(1, -1);
+        }
+        
+        return final;
+
+    } catch (error) {
+        console.error("Error invoking Bedrock:", error);
+        throw new Error(`Error querying Nova API: ${error.message}`);
     }
-
-    const data = await response.json();
-    // Return the entire data object or just data.choices[0].message, etc.
-    return data;
-  } catch (error) {
-    console.log('Prompt before error: ', prompt)
-    console.log('Data recieved: ', response)
-    console.error('Error querying x.ai API:', error.message);
-    throw error;
-  }
 }

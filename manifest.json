@@ -14,22 +14,20 @@
       "service_worker": "background.js",
       "type": "module"
     },
-    "host_permissions": [
-      "<all_urls>"
-    ],
+    "host_permissions": ["<all_urls>"],
     "action": {
-      "default_popup": "popup.html",
       "default_icon": "browser boss.png"
     },
     "content_scripts": [
       {
         "matches": ["https://*/*", "http://*/*"],
-        "js": ["content.js"]
+        "js": ["content.js"],
+        "run_at": "document_start"
       }
     ],
     "web_accessible_resources": [
       {
-        "resources": ["executor.js", "utils/api.js"],
+        "resources": ["executor.js", "dist/api.bundle.js"],
         "matches": ["<all_urls>"]
       }
     ]

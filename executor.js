@@ -1,5 +1,8 @@
-const MAX_CHAR_LIMIT = 200000; // Character limit for the model input
-
+if (typeof myVariable === "undefined") {
+    // Declare it now
+    var MAX_CHAR_LIMIT = 200000;
+  
+}
 const cleanText = (text) => {
     if (!text) return null;
     let removedContent = [];
@@ -20,7 +23,7 @@ const cleanText = (text) => {
     text = text.replace(/window\.\w+[^;]*;/g, (m) => {
         removedContent.push(`JS CALL: ${m}`);
         return "⚠️";
-    });
+    }); 
     text = text.replace(/[\w\-]+\s*:\s*[^;]+;/g, (m) => {
         removedContent.push(`INLINE CSS: ${m}`);
         return "⚠️";
@@ -73,7 +76,7 @@ const cleanText = (text) => {
 
     // Debug log
     if (removedContent.length > 0) {
-        console.log("Removed/Truncated content:", removedContent);
+        //console.log("Removed/Truncated content:", removedContent);
     }
 
     return text.length > 1 ? text : null;
@@ -103,10 +106,15 @@ const deduplicateInputs = (elements) => {
 const filterElements = (elements) => {
     const uniqueElements = new Set();
     const filtered = [];
-
     const skipTags = new Set(["TABLE", "TBODY", "TR", "TD"]);
 
     elements.forEach((el, index) => {
+        // Skip elements with the class 'executioner-element'
+        if (el.class && typeof el.class === "string" && el.class.includes("executioner-element")) {
+            return; // Exclude this element
+        }
+
+        // Skip specific tags
         if (skipTags.has(el.tag)) {
             return; // Skip these tags
         }
@@ -120,7 +128,7 @@ const filterElements = (elements) => {
         const shortOrJunk = !isTextInput && cleaned.length < 1;
 
         if (shortOrJunk) {
-            return; 
+            return;
         }
 
         const elementKey = JSON.stringify({
@@ -154,6 +162,7 @@ const filterElements = (elements) => {
             isClickable: el.isClickable || null,
             isFocusable: el.isFocusable || null,
             form: el.form || null,
+            attributes: el.attributes || null, // Include attributes for reference
         };
 
         filtered.push(item);
@@ -201,6 +210,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const truncatedElements = truncateElements(filteredElements, MAX_CHAR_LIMIT);
 
         console.log("truncated elements: ", filteredElements)
+        console.log("past actions: ", message.pastInstructions)
         const LLMprompt = `
             Your task today is '${message.task}'. Currently, you are at '${url}'.
             ${
@@ -208,49 +218,56 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     ? "Past actions - " + message.pastInstructions.join(", ")
                     : ""
             }
-            Here are the key page elements on the screen right now:
+            Here are the key page elements on the current page right now:
             ${JSON.stringify(
-                truncatedElements.map((element) => {
-                    // Only include these specific keys if they are non-null
-                    const allowedKeys = [
-                        "index",
-                        "tag",
-                        "text",
-                        "href",
-                        "rect",
-                        "isClickable",
-                        "ariaLabel",
-                        "ariaLabelledBy",
-                        "placeholder",
-                        "value"
-                    ];
+                truncatedElements
+                    .filter((element) => {
+                        const rect = element?.rect;
+                        if (!rect || rect.width * rect.height < 5) {
+                            return false; // Exclude elements without a rect or with a very small area
+                        }
+                        return true;
+                    })
+                    .map((element) => {
+                        // Only include these specific keys if they are non-null
+                        const allowedKeys = [
+                            "index",
+                            "tag",
+                            "text",
+                            "href",
+                            "isClickable",
+                            "ariaLabel",
+                            "ariaLabelledBy",
+                            "placeholder",
+                            "value",
+                            "onScreenArea", // Add the calculated on-screen area
+                        ];
             
-                    const obj = {};
-                    for (const key of allowedKeys) {
-                        if (element[key] !== null && element[key] !== undefined) {
-                            // If the key is `rect`, round its values
-                            if (key === "rect" && typeof element[key] === "object") {
-                                obj[key] = {};
-                                for (const [rectKey, rectValue] of Object.entries(element[key])) {
-                                    obj[key][rectKey] = Math.round(rectValue); // Round the rect values
+                        const obj = {};
+                        for (const key of allowedKeys) {
+                            if (key === "onScreenArea") {
+                                // Calculate the on-screen area and include it
+                                const rect = element?.rect;
+                                if (rect) {
+                                    obj[key] = Math.round(rect.width * (rect.height / 1000));
                                 }
-                            } else {
+                            } else if (element[key] !== null && element[key] !== undefined) {
                                 obj[key] = element[key];
                             }
                         }
-                    }
-                    return obj;
-                }),
+                        return obj;
+                    }),
                 null,
                 2
-            )}
-            Respond with a single number between 1 and ${truncatedElements.length} to interact with that element.
-            Or respond with a number-text to enter text into an element, e.g., 3-"login info".
-            Provide a single sentence at the end justifying why you did what you did.
-            Respond with -1 if '${message.task}' is unclear or not feasible, and justify.
+            )}            
+            Respond with a single number between 1 and ${truncatedElements.length} to interact with the element that contains that aformentioned index. Make sure the elements size and location on screen, along with it other elements help complete ${message.task}
+            Or respond with a number-text to input text into ONLY a INPUT, TEXTAREA or DIV do not input into a SPAN for example. example: 3-"login info"
+            Provide a single sentence at the end justifying why you did what you did. This should be after a newline.
+            Respond with -1 if '${message.task}' is unclear or not possible, even with multiple steps.
             Respond with -5 if task is complete.
-            Respond with 0-"URL" to navigate to a new url. 
-            Add a <DONE> at the end of your message if you will have completed the task after this action.
+            Append a <DONE> at the end of your message if you will have completely finished ${message.task}. If this action will finish the task then append the <DONE>
+            Respond with 0-"{URL}" to navigate to a new url. Only respond with a -"{URL} if the first number is 0"
+            Respond once. Your choices for a response are a positive number, -5,-1,0-"[URL]" plus the justification.
         `.trim();
 
 
@@ -260,6 +277,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             filteredElements:truncatedElements,
         });
 
-        return true;
+        
     }
 });
