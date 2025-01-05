@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "LLM Browser Agent",
+    "name": "Browser Boss",
     "version": "1.0",
-    "description": "Control the browser using an LLM.",
+    "description": "Execute tasks in your browser with the power of AI",
     "permissions": [
       "scripting",
       "activeTab",
@@ -15,8 +15,16 @@
       "type": "module"
     },
     "host_permissions": ["<all_urls>"],
+    "icons": {
+      "16": "icons/browserboss16.png",
+      "48": "icons/browserboss48.png",
+      "128": "icons/browserboss128.png"
+    },
     "action": {
-      "default_icon": "browser boss.png"
+      "default_icon": {
+        "16": "icons/browserboss16.png",
+        "32": "icons/browserboss32.png"
+      }
     },
     "content_scripts": [
       {

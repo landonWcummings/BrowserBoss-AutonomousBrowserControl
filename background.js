@@ -2,7 +2,7 @@ import { queryNova } from './dist/api.bundle.js';
 
 let chatHistoryData = { history: [], timestamp: 0 };
 let instructionsHistory = [];
-const MAX_REQUESTS_PER_DAY = 2; // Set your daily request limit
+const MAX_REQUESTS_PER_DAY = 25; // Set your daily request limit
 const STORAGE_KEY = "LLMQueryLimits";
 
 
@@ -19,8 +19,12 @@ chrome.action.onClicked.addListener(async (tab) => {
 chrome.runtime.onMessage.addListener((task, sender, sendResponse) => {
     if (task.type === "saveChatHistory") {
         // Save history with timestamp
-        chatHistoryData = task.data;
-        console.log("Chat history saved:", chatHistoryData);
+        chatHistoryData = {
+            ...chatHistoryData,
+            history: [...chatHistoryData.history, ...task.data.history],
+            timestamp: task.data.timestamp || Date.now(),
+        };
+              console.log("Chat history saved:", chatHistoryData);
         chrome.tabs.query({}, (tabs) => {
           tabs
           // Keep only tabs whose URL starts with http:// or https://
@@ -47,6 +51,9 @@ chrome.runtime.onMessage.addListener((task, sender, sendResponse) => {
     }else if (task.type === "LLMQuery") {
       (async () => {
 
+      chatHistoryData.history.push({ sender: "user", text: task.prompt });
+      console.log("User message added to chat history:", chatHistoryData);
+          
       if (!(await canMakeLLMQuery())) {
         addBotMessageToHistory("Daily limit reached. Please try again tomorrow or contact lndncmmngs@gmail.com for a pro account.");
         sendResponse({ success: true, error: "Daily limit reached." });
@@ -58,7 +65,6 @@ chrome.runtime.onMessage.addListener((task, sender, sendResponse) => {
         let selectedTab = null;
         let execResponse = null;
         let finishing = false;
-        chatHistoryData.history.push({ sender: "user", text: task.prompt });
         console.log("chat history after addition: ", chatHistoryData)
         addBotMessageToHistory("Initializing")
         

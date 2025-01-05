@@ -84,12 +84,17 @@ function addMessage(sender, text) {
     // Check if the sidebar already exists
     let existing = document.getElementById("llm-extension-sidebar");
     if (existing) {
-        // Toggle visibility
         existing.style.display = existing.style.display === "none" ? "block" : "none";
-        existing.scrollTop = existing.scrollHeight; // Ensure scrolling to the bottom
+        setTimeout(() => {
+            const chatContainer = document.getElementById("chat-container");
+            if (chatContainer) {
+                chatContainer.scrollTop = chatContainer.scrollHeight; // Ensure scrolling to the bottom
+            }
+        }, 0); // Allow DOM updates before scrolling
         existing.querySelector("textarea").focus(); // Auto-focus input
         return;
     }
+    
 
     // Create the sidebar
     // Create the sidebar
@@ -120,7 +125,81 @@ function addMessage(sender, text) {
     header.style.fontWeight = "bold";
     header.style.textAlign = "center";
     header.style.position = "relative";
-    header.innerText = "EXECUTIONER";
+
+    const infoIcon = document.createElement("div");
+    infoIcon.innerText = "ⓘ"; // Unicode character for info
+    infoIcon.style.position = "absolute"; // Use absolute positioning
+    infoIcon.style.left = "10px"; // Flush against the left wall
+    infoIcon.style.top = "50%"; // Vertically centered
+    infoIcon.style.transform = "translateY(-50%)"; // Ensure perfect vertical centering
+    infoIcon.style.cursor = "pointer";
+    infoIcon.style.fontSize = "20px";
+
+
+    // Add event listener to show an info card
+    infoIcon.addEventListener("click", () => {
+        const infoCard = document.getElementById("info-card");
+
+        if (infoCard) {
+            // Toggle visibility
+            infoCard.style.display = infoCard.style.display === "none" ? "block" : "none";
+        } else {
+            // Create the info card
+            const newInfoCard = document.createElement("div");
+            newInfoCard.id = "info-card";
+            newInfoCard.style.position = "absolute";
+            newInfoCard.style.top = "40px"; // Position below the header
+            newInfoCard.style.left = "10px";
+            newInfoCard.style.backgroundColor = "#fff";
+            newInfoCard.style.padding = "10px";
+            newInfoCard.style.border = "1px solid #ccc";
+            newInfoCard.style.borderRadius = "5px";
+            newInfoCard.style.boxShadow = "0px 2px 5px rgba(0, 0, 0, 0.2)";
+            newInfoCard.style.zIndex = "1000000";
+            newInfoCard.style.width = "250px"; // Ensure proper width for the card
+    
+            // Add info text
+            const infoText = document.createElement("p");
+            infoText.innerText = "Demo project made by Landon Cummings. Testing applications of LLMs. Uses Amazon's Nova lite in the background. To learn more about this extension visit ";
+            newInfoCard.appendChild(infoText);
+    
+            // Add the link
+            const infoLink = document.createElement("a");
+            infoLink.href = "https://landoncummings.com/BrowsingBoss-AutonomousBrowserControl";
+            infoLink.innerText = "my website.";
+            infoLink.style.color = "#007bff"; // Link color
+            infoLink.style.textDecoration = "none"; // No underline by default
+            infoLink.style.fontWeight = "bold";
+            infoLink.target = "_blank"; // Open in a new tab
+            infoLink.addEventListener("mouseover", () => {
+                infoLink.style.textDecoration = "underline"; // Add underline on hover
+            });
+            infoLink.addEventListener("mouseout", () => {
+                infoLink.style.textDecoration = "none"; // Remove underline on hover out
+            });
+    
+            newInfoCard.appendChild(infoLink);
+
+            const aftertext = document.createElement("p");
+            aftertext.innerText = " For any business inquires or project ideas contact lndncmmngs@ gmail.com";
+            newInfoCard.appendChild(aftertext);
+
+
+            header.appendChild(newInfoCard);
+        }
+    
+    });
+
+
+    //            newInfoCard.innerText = "Demo project made by Landon Cummings. Testing applications of LLMs. Uses Amazon's Nova lite in the background. To learn more about this visit";
+
+    header.appendChild(infoIcon);
+
+    // Title
+    const title = document.createElement("span");
+    title.innerText = "EXECUTIONER";
+    title.style.verticalAlign = "middle"; // Align with the info icon
+    header.appendChild(title);
 
     // Close button
     const closeButton = document.createElement("button");
@@ -131,16 +210,17 @@ function addMessage(sender, text) {
     closeButton.style.background = "none";
     closeButton.style.border = "none";
     closeButton.style.color = "#f0f0f0";
-    closeButton.style.fontSize = "34px";
+    closeButton.style.fontSize = "35px";
     closeButton.style.cursor = "pointer";
 
     closeButton.addEventListener("click", () => {
-        chatContainer = null
-        chrome.runtime.sendMessage({ type: "reset" })
+        chatContainer = null;
+        chrome.runtime.sendMessage({ type: "reset" });
         sidebar.remove();
     });
 
     header.appendChild(closeButton);
+
 
     chatContainer = document.createElement("div");
     chatContainer.id = "chat-container";
@@ -155,6 +235,8 @@ function addMessage(sender, text) {
     inputArea.style.display = "flex";
     inputArea.style.borderTop = "1px solid #ccc";
     inputArea.style.backgroundColor = "#ffffff";
+    inputArea.style.position = "sticky";
+    inputArea.style.bottom = "0";
 
     const input = document.createElement("textarea");
     input.placeholder = "I will execute...";
@@ -192,18 +274,21 @@ function addMessage(sender, text) {
     const savedHistory = await loadChatHistory();
     if (savedHistory) {
         savedHistory.forEach(({ sender, text }) => addMessage(sender, text));
+        setTimeout(() => {
+            if (chatContainer) {
+                chatContainer.scrollTop = chatContainer.scrollHeight; // Scroll to the bottom
+            }
+        }, 0);
     } else {
         const defaultMessage = "What shall I execute today?";
         addMessage("bot", defaultMessage);
         await saveChatHistory([{ sender: "bot", text: defaultMessage }]);
-    }
+    }    
 
     // Handle send button click
     sendButton.addEventListener("click", async () => {
         const message = input.value.trim();
         if (!message) return;
-
-        addMessage("user", message);
         input.value = "";
 
         chrome.runtime.sendMessage({ type: "LLMQuery", prompt: message }, async (response) => {
@@ -213,7 +298,10 @@ function addMessage(sender, text) {
             }
 
             const botMessage = response.result || "No response from background script.";
-            addMessage("bot", botMessage);
+            if (botMessage != "No response from background script."){
+                addMessage("bot", botMessage);
+            }
+            
 
             const chatHistory = Array.from(chatContainer.children).map((bubble) => ({
                 sender: bubble.style.justifyContent === "flex-end" ? "user" : "bot",

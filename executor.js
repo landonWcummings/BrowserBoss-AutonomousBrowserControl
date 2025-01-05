@@ -114,6 +114,10 @@ const filterElements = (elements) => {
             return; // Exclude this element
         }
 
+        if (el.text && typeof el.text === "string" && (el.text.toLowerCase().includes("execute") || el.text.toLowerCase().includes("execution"))) {
+            return;
+        }
+
         // Skip specific tags
         if (skipTags.has(el.tag)) {
             return; // Skip these tags
@@ -223,10 +227,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 truncatedElements
                     .filter((element) => {
                         const rect = element?.rect;
+            
+                        // Exclude elements without a rect or with a very small area
                         if (!rect || rect.width * rect.height < 5) {
-                            return false; // Exclude elements without a rect or with a very small area
+                            return false;
                         }
-                        return true;
+            
+                        // Exclude elements with rect.x < -100
+                        if (rect.x < -100) {
+                            return false;
+                        }
+            
+                        return true; // Include element if it passes the conditions
                     })
                     .map((element) => {
                         // Only include these specific keys if they are non-null
