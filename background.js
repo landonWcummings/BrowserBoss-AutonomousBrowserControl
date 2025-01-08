@@ -170,7 +170,7 @@ chrome.runtime.onMessage.addListener((task, sender, sendResponse) => {
 
                   
                 } catch (error) {
-                  console.error("Error executing:", error.message);
+                  console.error("Error executing action - Usually this occurs when websites prevent extension actions - error message:", error.message );
                   addBotMessageToHistory(`Error executing: ${error.message}`);
                 }
               }
